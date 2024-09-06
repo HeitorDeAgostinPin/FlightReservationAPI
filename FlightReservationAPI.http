@@ -1,0 +1,6 @@
+@FlightReservationAPI_HostAddress = http://localhost:5100
+
+GET {{FlightReservationAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
