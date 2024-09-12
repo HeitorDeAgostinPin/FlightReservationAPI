@@ -1,8 +1,8 @@
-﻿// Importando os namespaces necessários para o funcionamento do controlador.
+// Importando os namespaces necessários para o funcionamento do controlador.
 using Microsoft.AspNetCore.Mvc;
-
 using FlightReservationAPI.DATA;
 using FlightReservationAPI.MODELS;
+using Microsoft.EntityFrameworkCore;
 
 namespace FlightReservationAPI.Controllers
 {
@@ -11,10 +11,8 @@ namespace FlightReservationAPI.Controllers
     [ApiController]
     public class ReservationController : ControllerBase
     {
-        // Injetando o contexto do banco de dados (FlightReservationContext) através do construtor.
         private readonly FlightReservationContext _context;
 
-        // Construtor do controlador que recebe o contexto do banco de dados e o atribui a uma variável local.
         public ReservationController(FlightReservationContext context)
         {
             _context = context;
@@ -24,66 +22,105 @@ namespace FlightReservationAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Reservation>> PostReservation(Reservation reservation)
         {
-            // Busca o voo correspondente à reserva no banco de dados.
-            var flight = await _context.Flights.FindAsync(reservation.FlightId);
-
-            // Verifica se há assentos disponíveis no voo.
-            if (flight.AvailableSeats > 0)
+            try
             {
-                // Se houver, decrementa o número de assentos disponíveis.
-                flight.AvailableSeats--;
+                // Busca o voo correspondente à reserva no banco de dados.
+                var flight = await _context.Flights.FindAsync(reservation.FlightId);
 
-                // Adiciona a nova reserva ao contexto do banco de dados.
-                _context.Reservations.Add(reservation);
+                if (flight == null)
+                {
+                    return NotFound(new { message = "Voo não encontrado." });
+                }
 
-                // Salva as alterações no banco de dados de forma assíncrona.
-                await _context.SaveChangesAsync();
+                // Verifica se há assentos disponíveis no voo.
+                if (flight.AvailableSeats > 0)
+                {
+                    // Se houver, decrementa o número de assentos disponíveis.
+                    flight.AvailableSeats--;
 
-                // Retorna o status 201 Created, com a URL do novo recurso e os dados da reserva criada.
-                return CreatedAtAction(nameof(GetReservation), new { id = reservation.Id }, reservation);
+                    // Adiciona a nova reserva ao contexto do banco de dados.
+                    _context.Reservations.Add(reservation);
+
+                    // Salva as alterações no banco de dados de forma assíncrona.
+                    await _context.SaveChangesAsync();
+
+                    // Retorna o status 201 Created, com a URL do novo recurso e os dados da reserva criada.
+                    return CreatedAtAction(nameof(GetReservation), new { id = reservation.Id }, reservation);
+                }
+
+                // Se não houver assentos disponíveis, retorna um erro 400 Bad Request.
+                return BadRequest(new { message = "Não há assentos disponíveis." });
             }
-
-            // Se não houver assentos disponíveis, retorna um erro 400 Bad Request.
-            return BadRequest("No available seats.");
+            catch (DbUpdateException ex)
+            {
+                // Tratamento de erros específicos de banco de dados
+                return BadRequest(new { message = "Erro ao salvar a reserva no banco de dados.", error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                // Tratamento de exceções gerais
+                return StatusCode(500, new { message = "Ocorreu um erro ao processar a solicitação.", error = ex.Message });
+            }
         }
 
         // Método GET para obter os dados de uma reserva específica com base no ID.
         [HttpGet("{id}")]
         public async Task<ActionResult<Reservation>> GetReservation(int id)
         {
-            // Busca a reserva pelo ID no banco de dados de forma assíncrona.
-            var reservation = await _context.Reservations.FindAsync(id);
-
-            // Se a reserva não for encontrada, retorna 404 Not Found.
-            if (reservation == null)
+            try
             {
-                return NotFound();
-            }
+                // Busca a reserva pelo ID no banco de dados de forma assíncrona.
+                var reservation = await _context.Reservations.FindAsync(id);
 
-            // Se a reserva for encontrada, retorna os dados dela.
-            return reservation;
+                // Se a reserva não for encontrada, retorna 404 Not Found.
+                if (reservation == null)
+                {
+                    return NotFound(new { message = "Reserva não encontrada." });
+                }
+
+                // Se a reserva for encontrada, retorna os dados dela.
+                return reservation;
+            }
+            catch (Exception ex)
+            {
+                // Tratamento de exceções gerais
+                return StatusCode(500, new { message = "Erro ao buscar a reserva.", error = ex.Message });
+            }
         }
 
         // Método DELETE para cancelar uma reserva existente
         [HttpDelete("{id}")]
         public async Task<IActionResult> CancelReservation(int id)
         {
-            var reservation = await _context.Reservations.FindAsync(id);
-            if (reservation == null)
+            try
             {
-                return NotFound("Reserva não encontrada.");
-            }
+                var reservation = await _context.Reservations.FindAsync(id);
+                if (reservation == null)
+                {
+                    return NotFound(new { message = "Reserva não encontrada." });
+                }
 
-            var flight = await _context.Flights.FindAsync(reservation.FlightId);
-            if (flight != null)
+                var flight = await _context.Flights.FindAsync(reservation.FlightId);
+                if (flight != null)
+                {
+                    flight.AvailableSeats++; // Repor o assento cancelado
+                }
+
+                _context.Reservations.Remove(reservation);
+                await _context.SaveChangesAsync();
+
+                return NoContent(); // Retorna 204 No Content após cancelar a reserva
+            }
+            catch (DbUpdateException ex)
             {
-                flight.AvailableSeats++; // Repor o assento cancelado
+                // Tratamento de erros específicos de banco de dados
+                return BadRequest(new { message = "Erro ao cancelar a reserva no banco de dados.", error = ex.Message });
             }
-
-            _context.Reservations.Remove(reservation);
-            await _context.SaveChangesAsync();
-
-            return NoContent(); // Retorna 204 No Content após cancelar a reserva
+            catch (Exception ex)
+            {
+                // Tratamento de exceções gerais
+                return StatusCode(500, new { message = "Ocorreu um erro ao processar o cancelamento da reserva.", error = ex.Message });
+            }
         }
     }
 }
