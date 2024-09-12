@@ -1,6 +1,5 @@
-﻿// Importando os namespaces necessários para o funcionamento do controlador.
+// Importando os namespaces necessários para o funcionamento do controlador.
 using Microsoft.AspNetCore.Mvc;
-
 using FlightReservationAPI.DATA;
 using FlightReservationAPI.MODELS;
 using Microsoft.EntityFrameworkCore;
@@ -25,22 +24,50 @@ namespace FlightReservationAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Flight>>> GetFlights()
         {
-            // Retorna a lista de voos armazenados no banco de dados de forma assíncrona.
-            return await _context.Flights.ToListAsync();
+            try
+            {
+                // Retorna a lista de voos armazenados no banco de dados de forma assíncrona.
+                var flights = await _context.Flights.ToListAsync();
+                return Ok(flights);
+            }
+            catch (Exception ex)
+            {
+                // Captura qualquer erro durante a consulta ao banco de dados e retorna um erro 500
+                return StatusCode(500, $"Erro ao acessar o banco de dados: {ex.Message}");
+            }
         }
 
         // Método POST para adicionar um novo voo ao sistema. Recebe os dados do voo no corpo da requisição.
         [HttpPost]
         public async Task<ActionResult<Flight>> PostFlight(Flight flight)
         {
-            // Adiciona o novo voo ao contexto do banco de dados.
-            _context.Flights.Add(flight);
+            try
+            {
+                // Verifica se os dados do voo são válidos
+                if (flight == null)
+                {
+                    return BadRequest("Dados do voo estão inválidos.");
+                }
 
-            // Salva as alterações no banco de dados de forma assíncrona.
-            await _context.SaveChangesAsync();
+                // Adiciona o novo voo ao contexto do banco de dados.
+                _context.Flights.Add(flight);
 
-            // Retorna o status 201 Created, com a URL do novo recurso e os dados do voo criado.
-            return CreatedAtAction(nameof(GetFlights), new { id = flight.Id }, flight);
+                // Salva as alterações no banco de dados de forma assíncrona.
+                await _context.SaveChangesAsync();
+
+                // Retorna o status 201 Created, com a URL do novo recurso e os dados do voo criado.
+                return CreatedAtAction(nameof(GetFlights), new { id = flight.Id }, flight);
+            }
+            catch (DbUpdateException ex)
+            {
+                // Captura erros relacionados ao banco de dados
+                return StatusCode(500, $"Erro ao salvar os dados no banco: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                // Captura qualquer outro erro
+                return StatusCode(500, $"Erro interno do servidor: {ex.Message}");
+            }
         }
     }
 }
